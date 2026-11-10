@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+
+    body {
+      background-color: rgb(0, 0, 0);
+      color: rgb(255, 255, 255);
+      font-family: 'JetBrains Mono', monospace;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    button {
+      border: none;
+      background-color: rgb(0, 0, 0);
+      color: rgb(255, 255, 255);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 24px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      outline: none;
+    }
+
+    button:hover {
+      text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+      transform: scale(1.05);
+    }
+
+    /* Screen overlays */
+    .screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Keypad for mobile support */
+    .numpad-btn {
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: rgba(0, 0, 0, 0.6);
+      color: #fff;
+      font-size: 1.25rem;
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      touch-action: manipulation;
+    }
+
+    .numpad-btn:active {
+      background: #fff;
+      color: #000;
+    }
+
+    /* CRT scanline overlay effect */
+    .scanlines {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      pointer-events: none;
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.25) 50%
+      );
+      background-size: 100% 4px;
+      z-index: 20;
+      opacity: 0.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="scanlines"></div>
+
+  <!-- MENU SCREEN -->
+  <div id="menu-screen" class="screen">
+    <div class="text-xl tracking-widest mb-6 opacity-75">
+      &dot;&nbsp;.&nbsp;&dot;&nbsp;.&nbsp;&dot;&nbsp;.&nbsp;&dot;&nbsp;.&nbsp;&dot;
+    </div>
+    
+    <div class="space-y-4 mb-8 text-center">
+      <div><button onclick="startGame('beginner')" id="one"><u>Beginner</u></button></div>
+      <div><button onclick="startGame('intermediate')" id="two"><u>Intermediate</u></button></div>
+      <div><button onclick="startGame('difficult')" id="three"><u>Difficult</u></button></div>
+      <div><button onclick="startGame('infinity')" id="four"><u>Infinity</u></button></div>
+    </div>
+
+    <div class="text-3xl space-y-1 opacity-90 mt-4">
+      <div>&Delta;</div>
+      <div>&cir;</div>
+    </div>
+
+    <div class="mt-8 text-xs text-neutral-500 max-w-xs text-center px-4">
+      Type digits on keyboard or screen pad to destroy approaching numbered triangles before they attack!
+    </div>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div id="game-screen" class="screen hidden" style="justify-content: space-between;">
+    <!-- HUD -->
+    <div class="w-full max-w-2xl px-6 pt-6 flex justify-between items-center z-10 text-lg font-bold">
+      <div>HP: <span id="hp-display" class="text-white">50</span> / 50</div>
+      <div class="text-center">
+        <div class="text-xs text-neutral-400 uppercase tracking-widest" id="mode-display">BEGINNER</div>
+        <div class="text-2xl" id="timer-display">60.0s</div>
+      </div>
+      <div>SCORE: <span id="score-display">0</span></div>
+    </div>
+
+    <!-- Canvas Container -->
+    <div class="relative w-full flex-grow">
+      <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <!-- Mobile Virtual Numpad -->
+    <div id="numpad" class="w-full max-w-xs px-4 pb-4 grid grid-cols-5 gap-2 z-10 sm:hidden">
+      <button class="numpad-btn" onclick="handleInput('0')">0</button>
+      <button class="numpad-btn" onclick="handleInput('1')">1</button>
+      <button class="numpad-btn" onclick="handleInput('2')">2</button>
+      <button class="numpad-btn" onclick="handleInput('3')">3</button>
+      <button class="numpad-btn" onclick="handleInput('4')">4</button>
+      <button class="numpad-btn" onclick="handleInput('5')">5</button>
+      <button class="numpad-btn" onclick="handleInput('6')">6</button>
+      <button class="numpad-btn" onclick="handleInput('7')">7</button>
+      <button class="numpad-btn" onclick="handleInput('8')">8</button>
+      <button class="numpad-btn" onclick="handleInput('9')">9</button>
+    </div>
+  </div>
+
+  <!-- END GAME SCREEN -->
+  <div id="end-screen" class="screen hidden bg-black/90 z-30">
+    <h1 id="end-title" class="text-4xl font-bold tracking-widest mb-4">GAME OVER</h1>
+    <p id="end-subtitle" class="text-neutral-400 mb-6 text-center max-w-md px-4">The triangles overran your defenses.</p>
+    
+    <div class="space-y-2 text-center text-lg mb-8">
+      <div>Final Score: <span id="end-score" class="font-bold">0</span></div>
+      <div>Mode: <span id="end-mode" class="font-bold">Beginner</span></div>
+    </div>
+
+    <div class="space-y-4 text-center">
+      <div><button onclick="restartGame()"><u>Try Again</u></button></div>
+      <div><button onclick="showMenu()"><u>Main Menu</u></button></div>
+    </div>
+  </div>
+
+  <script>
+    // --- Audio Synthesizer (Web Audio API) ---
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new AudioContext();
+      }
+    }
+
+    function playTone(freq, type, duration, startGain = 0.3, endGain = 0.001) {
+      if (!audioCtx) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(startGain, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(endGain, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    function soundHit() {
+      playTone(440, 'triangle', 0.1, 0.4);
+      playTone(880, 'sine', 0.15, 0.3);
+    }
+
+    function soundDestroy() {
+      playTone(150, 'sawtooth', 0.2, 0.5);
+      playTone(300, 'square', 0.25, 0.3);
+    }
+
+    function soundEnemyShoot() {
+      playTone(220, 'sawtooth', 0.15, 0.2);
+    }
+
+    function soundPlayerDamage() {
+      playTone(100, 'square', 0.3, 0.6);
+    }
+
+    function soundWin() {
+      playTone(523.25, 'sine', 0.2, 0.4);
+      setTimeout(() => playTone(659.25, 'sine', 0.2, 0.4), 150);
+      setTimeout(() => playTone(783.99, 'sine', 0.4, 0.4), 300);
+    }
+
+    function soundGameOver() {
+      playTone(300, 'sawtooth', 0.3, 0.5);
+      setTimeout(() => playTone(200, 'sawtooth', 0.4, 0.5), 250);
+      setTimeout(() => playTone(100, 'sawtooth', 0.6, 0.5), 500);
+    }
+
+    // --- Game Logic Engine ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    let currentMode = 'beginner';
+    let isRunning = false;
+    let score = 0;
+    let playerHp = 50;
+    let timeRemaining = 60.0;
+    let lastTimestamp = 0;
+    let activeEnemies = [];
+    let projectiles = [];
+    let particles = [];
+    let lasers = [];
+
+    const modeConfigs = {
+      beginner: { name: 'Beginner', minSpawn: 2, maxSpawn: 3, speedMult: 0.8, attackInterval: 3.5, digits: 1 },
+      intermediate: { name: 'Intermediate', minSpawn: 3, maxSpawn: 4, speedMult: 1.0, attackInterval: 2.8, digits: 1 },
+      difficult: { name: 'Difficult', minSpawn: 4, maxSpawn: 5, speedMult: 1.25, attackInterval: 2.2, digits: 1 },
+      infinity: { name: 'Infinity', minSpawn: 5, maxSpawn: 6, speedMult: 1.5, attackInterval: 1.8, digits: 1 }
+    };
+
+    function resizeCanvas() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // Game Elements
+    class Enemy {
+      constructor(val, x, y) {
+        this.value = val.toString();
+        this.x = x;
+        this.y = y;
+        this.radius = 22;
+        this.angle = Math.atan2(canvas.height / 2 - y, canvas.width / 2 - x);
+        this.speed = (15 + Math.random() * 15) * modeConfigs[currentMode].speedMult;
+        this.shootTimer = 1.0 + Math.random() * modeConfigs[currentMode].attackInterval;
+        this.pulse = 0;
+      }
+
+      update(dt) {
+        // Move slowly towards player center
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const dist = Math.hypot(centerX - this.x, centerY - this.y);
+        
+        // Stop within attack range (120px)
+        if (dist > 120) {
+          this.x += Math.cos(this.angle) * this.speed * dt;
+          this.y += Math.sin(this.angle) * this.speed * dt;
+        }
+
+        this.pulse += dt * 3;
+        this.shootTimer -= dt;
+
+        // Shoot at player
+        if (this.shootTimer <= 0) {
+          this.shootTimer = modeConfigs[currentMode].attackInterval + Math.random();
+          projectiles.push(new Projectile(this.x, this.y, centerX, centerY));
+          soundEnemyShoot();
+        }
+      }
+
+      draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle + Math.PI / 2);
+
+        // Draw Triangle
+        const size = this.radius + Math.sin(this.pulse) * 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -size);
+        ctx.lineTo(size, size);
+        ctx.lineTo(-size, size);
+        ctx.closePath();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.fillStyle = '#000000';
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.restore();
+
+        // Draw Number Label
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 18px "JetBrains Mono", monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(this.value, this.x, this.y + 1);
+      }
+    }
+
+    class Projectile {
+      constructor(sx, sy, tx, ty) {
+        this.x = sx;
+        this.y = sy;
+        this.speed = 180;
+        const angle = Math.atan2(ty - sy, tx - sx);
+        this.vx = Math.cos(angle) * this.speed;
+        this.vy = Math.sin(angle) * this.speed;
+        this.radius = 4;
+      }
+
+      update(dt) {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+
+        // Hit check player
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        if (Math.hypot(centerX - this.x, centerY - this.y) < 25) {
+          playerHp = Math.max(0, playerHp - 5);
+          document.getElementById('hp-display').innerText = playerHp;
+          soundPlayerDamage();
+          createExplosion(this.x, this.y, 8, '#ffffff');
+          return true; // remove
+        }
+
+        // Out of bounds check
+        if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+          return true;
+        }
+
+        return false;
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+      }
+    }
+
+    class Particle {
+      constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.vx = (Math.random() - 0.5) * 150;
+        this.vy = (Math.random() - 0.5) * 150;
+        this.life = 0.4 + Math.random() * 0.3;
+        this.maxLife = this.life;
+        this.color = color || '#ffffff';
+      }
+
+      update(dt) {
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+        this.life -= dt;
+      }
+
+      draw() {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x - 2, this.y - 2, 4, 4);
+        ctx.restore();
+      }
+    }
+
+    class LaserBeam {
+      constructor(x1, y1, x2, y2) {
+        this.x1 = x1; this.y1 = y1;
+        this.x2 = x2; this.y2 = y2;
+        this.life = 0.15;
+      }
+      update(dt) { this.life -= dt; }
+      draw() {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, this.life / 0.15);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(this.x1, this.y1);
+        ctx.lineTo(this.x2, this.y2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function createExplosion(x, y, count = 12, color = '#ffffff') {
+      for (let i = 0; i < count; i++) {
+        particles.push(new Particle(x, y, color));
+      }
+    }
+
+    function spawnWave() {
+      const cfg = modeConfigs[currentMode];
+      const count = Math.floor(Math.random() * (cfg.maxSpawn - cfg.minSpawn + 1)) + cfg.minSpawn;
+      
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const spawnRadius = Math.max(canvas.width, canvas.height) * 0.45;
+
+      const usedNumbers = new Set(activeEnemies.map(e => e.value));
+
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const x = centerX + Math.cos(angle) * spawnRadius;
+        const y = centerY + Math.sin(angle) * spawnRadius;
+
+        // Generate non-duplicate random digit 0-9
+        let num;
+        let attempts = 0;
+        do {
+          num = Math.floor(Math.random() * 10).toString();
+          attempts++;
+        } while (usedNumbers.has(num) && attempts < 20);
+
+        usedNumbers.add(num);
+        activeEnemies.push(new Enemy(num, x, y));
+      }
+    }
+
+    function handleInput(char) {
+      if (!isRunning) return;
+
+      initAudio();
+
+      // Find matching triangle enemy closest to player center
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+
+      let targetIndex = -1;
+      let minDistance = Infinity;
+
+      for (let i = 0; i < activeEnemies.length; i++) {
+        if (activeEnemies[i].value === char) {
+          const dist = Math.hypot(centerX - activeEnemies[i].x, centerY - activeEnemies[i].y);
+          if (dist < minDistance) {
+            minDistance = dist;
+            targetIndex = i;
+          }
+        }
+      }
+
+      if (targetIndex !== -1) {
+        const target = activeEnemies[targetIndex];
+        
+        // Shoot laser beam
+        lasers.push(new LaserBeam(centerX, centerY, target.x, target.y));
+        createExplosion(target.x, target.y, 16);
+        soundDestroy();
+
+        // Remove enemy and update score
+        activeEnemies.splice(targetIndex, 1);
+        score += 10;
+        document.getElementById('score-display').innerText = score;
+
+        // If wave cleared, spawn next wave
+        if (activeEnemies.length === 0) {
+          spawnWave();
+        }
+      } else {
+        // Miss feedback
+        soundHit();
+      }
+    }
+
+    // Keyboard controls
+    window.addEventListener('keydown', (e) => {
+      if (e.key >= '0' && e.key <= '9') {
+        handleInput(e.key);
+      }
+    });
+
+    function gameLoop(timestamp) {
+      if (!isRunning) return;
+
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const dt = Math.min((timestamp - lastTimestamp) / 1000, 0.1);
+      lastTimestamp = timestamp;
+
+      // Timer updates
+      if (currentMode !== 'infinity') {
+        timeRemaining -= dt;
+        if (timeRemaining <= 0) {
+          timeRemaining = 0;
+          endGame(true); // Victory on timer survival for non-infinity mode
+          return;
+        }
+      } else {
+        timeRemaining += dt; // Counts up in Infinity mode
+      }
+
+      document.getElementById('timer-display').innerText = 
+        currentMode === 'infinity' ? timeRemaining.toFixed(1) + 's' : timeRemaining.toFixed(1) + 's';
+
+      // Clear Canvas
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+
+      // Draw Player Circle (&cir;)
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, 16, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // Update & Draw Lasers
+      lasers = lasers.filter(l => {
+        l.update(dt);
+        l.draw();
+        return l.life > 0;
+      });
+
+      // Update & Draw Particles
+      particles = particles.filter(p => {
+        p.update(dt);
+        p.draw();
+        return p.life > 0;
+      });
+
+      // Update & Draw Projectiles
+      projectiles = projectiles.filter(p => {
+        const remove = p.update(dt);
+        p.draw();
+        return !remove;
+      });
+
+      // Update & Draw Enemies
+      activeEnemies.forEach(e => {
+        e.update(dt);
+        e.draw();
+      });
+
+      // Check Game Over State
+      if (playerHp <= 0) {
+        endGame(false);
+        return;
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    function startGame(mode) {
+      initAudio();
+      currentMode = mode;
+      score = 0;
+      playerHp = 50;
+      timeRemaining = 60.0;
+      activeEnemies = [];
+      projectiles = [];
+      particles = [];
+      lasers = [];
+      lastTimestamp = 0;
+
+      document.getElementById('hp-display').innerText = playerHp;
+      document.getElementById('score-display').innerText = score;
+      document.getElementById('mode-display').innerText = modeConfigs[mode].name;
+
+      document.getElementById('menu-screen').classList.add('hidden');
+      document.getElementById('end-screen').classList.add('hidden');
+      document.getElementById('game-screen').classList.remove('hidden');
+
+      resizeCanvas();
+      spawnWave();
+
+      isRunning = true;
+      requestAnimationFrame(gameLoop);
+    }
+
+    function endGame(isWin) {
+      isRunning = false;
+
+      document.getElementById('end-score').innerText = score;
+      document.getElementById('end-mode').innerText = modeConfigs[currentMode].name;
+
+      const title = document.getElementById('end-title');
+      const subtitle = document.getElementById('end-subtitle');
+
+      if (isWin) {
+        soundWin();
+        title.innerText = 'MISSION CLEAR';
+        title.className = 'text-4xl font-bold tracking-widest mb-4 text-white';
+        subtitle.innerText = 'You successfully held off the triangle invasion!';
+      } else {
+        soundGameOver();
+        title.innerText = 'GAME OVER';
+        title.className = 'text-4xl font-bold tracking-widest mb-4 text-white';
+        subtitle.innerText = 'Your circle core was destroyed.';
+      }
+
+      document.getElementById('end-screen').classList.remove('hidden');
+    }
+
+    function restartGame() {
+      startGame(currentMode);
+    }
+
+    function showMenu() {
+      isRunning = false;
+      document.getElementById('game-screen').classList.add('hidden');
+      document.getElementById('end-screen').classList.add('hidden');
+      document.getElementById('menu-screen').classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
